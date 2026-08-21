@@ -1,40 +1,38 @@
 /* ================================================================
    UI INTERACTIONS
-   Raycasting, tooltip, detail panel, in-app PDF reader,
-   bookmark toggle, and the "Add Book" modal / form.
+   Raycasting · tooltip · detail panel · in-app PDF reader ·
+   "Mark as Read" toggle · "Add Book" modal · focus-on-click
    ================================================================ */
 
 import * as THREE from 'three';
-import { camera, renderer } from './sceneSetup.js';
+import { camera, renderer, controls } from './sceneSetup.js';
 import { state } from './state.js';
 import { sceneBooks } from './models.js';
 import { addBookToScene } from './bookBuilder.js';
 import { db } from './database.js';
 
 // ── DOM references ─────────────────────────────────────────────
-const tooltip       = document.getElementById('tooltip');
-const tipTitle      = document.getElementById('tipTitle');
-const tipAuthor     = document.getElementById('tipAuthor');
-const bookDetail    = document.getElementById('bookDetail');
-const closeBtn      = document.getElementById('closeBtn');
-const actionBtn     = document.getElementById('actionBtn');
-const readBtn       = document.getElementById('readBtn');
-const readerOverlay = document.getElementById('readerOverlay');
-const readerIframe  = document.getElementById('readerIframe');
-const readerTitle   = document.getElementById('readerTitle');
+const tooltip        = document.getElementById('tooltip');
+const tipTitle       = document.getElementById('tipTitle');
+const tipAuthor      = document.getElementById('tipAuthor');
+const bookDetail     = document.getElementById('bookDetail');
+const closeBtn       = document.getElementById('closeBtn');
+const actionBtn      = document.getElementById('actionBtn');
+const readBtn        = document.getElementById('readBtn');
+const readerOverlay  = document.getElementById('readerOverlay');
+const readerIframe   = document.getElementById('readerIframe');
+const readerTitle    = document.getElementById('readerTitle');
 const readerCloseBtn = document.getElementById('readerCloseBtn');
 
-const fabBtn              = document.getElementById('fabBtn');
-const addModal            = document.getElementById('addModal');
-const addCloseBtn         = document.getElementById('addCloseBtn');
-const addBookForm         = document.getElementById('addBookForm');
-const coverInput          = document.getElementById('coverInput');
-const bookInput           = document.getElementById('bookInput');
-const coverInputText      = document.getElementById('coverInputText');
-const bookInputText       = document.getElementById('bookInputText');
-const coverPreviewUpload  = document.getElementById('coverPreviewUpload');
-
-const bookmarked = new Set();
+const fabBtn             = document.getElementById('fabBtn');
+const addModal           = document.getElementById('addModal');
+const addCloseBtn        = document.getElementById('addCloseBtn');
+const addBookForm        = document.getElementById('addBookForm');
+const coverInput         = document.getElementById('coverInput');
+const bookInput          = document.getElementById('bookInput');
+const coverInputText     = document.getElementById('coverInputText');
+const bookInputText      = document.getElementById('bookInputText');
+const coverPreviewUpload = document.getElementById('coverPreviewUpload');
 
 // ── Mouse tracking ─────────────────────────────────────────────
 window.addEventListener('mousemove', (e) => {
@@ -63,49 +61,71 @@ window.addEventListener('touchend', (e) => {
         state.raycaster.setFromCamera(new THREE.Vector2(cx, cy), camera);
         const hits = state.raycaster.intersectObjects(state.rayTargets);
         if (hits.length > 0 && !bookDetail.classList.contains('active')) {
+            focusOnGroup(hits[0].object.parent);
             openDetail(hits[0].object.parent.userData.book);
         }
     }
 }, { passive: true });
 
-// ── Click to open detail ───────────────────────────────────────
+// ── Click → focus + open detail ────────────────────────────────
 window.addEventListener('click', () => {
     if (state.hoveredGroup && !bookDetail.classList.contains('active')) {
+        focusOnGroup(state.hoveredGroup);
         openDetail(state.hoveredGroup.userData.book);
     }
 });
 
-// ── Close panels ───────────────────────────────────────────────
-closeBtn.addEventListener('click', () => bookDetail.classList.remove('active'));
+// ── Close detail → unfocus ─────────────────────────────────────
+closeBtn.addEventListener('click', () => {
+    bookDetail.classList.remove('active');
+    startUnfocus();
+});
 
+// ── Close reader overlay (detail stays open) ───────────────────
 readerCloseBtn.addEventListener('click', () => {
     readerIframe.src = '';
     readerOverlay.classList.remove('active');
 });
 
-// ── Bookmark toggle ────────────────────────────────────────────
+// ── "Mark as Read" toggle ──────────────────────────────────────
 actionBtn.addEventListener('click', () => {
     const title = document.getElementById('detailTitle').textContent;
-    if (bookmarked.has(title)) {
-        bookmarked.delete(title);
-        actionBtn.innerHTML = '<i class="fas fa-bookmark"></i> Save';
-        actionBtn.style.borderColor = '';
-        actionBtn.style.color = '';
-        actionBtn.style.background = '';
+    // Find the full book object from sceneBooks
+    const book = sceneBooks.find(b => b.title === title);
+    if (!book) return;
+    toggleReadStatus(book);
+});
+
+async function toggleReadStatus(book) {
+    if (state.readBooks.has(book.title)) {
+        // Un-mark
+        state.readBooks.delete(book.title);
+        await db.removeRead(book.title);
+        setActionButton(false);
     } else {
-        bookmarked.add(title);
-        actionBtn.innerHTML = '<i class="fas fa-check"></i> Saved';
+        // Mark as read
+        state.readBooks.add(book.title);
+        await db.markAsRead({
+            title: book.title, author: book.author,
+            year: book.year, genre: book.genre, format: book.format
+        });
+        setActionButton(true);
+    }
+}
+
+function setActionButton(isRead) {
+    if (isRead) {
+        actionBtn.innerHTML = '<i class="fas fa-check-circle"></i> Read';
         actionBtn.style.borderColor = '#4ade80';
         actionBtn.style.color = '#4ade80';
         actionBtn.style.background = 'rgba(74,222,128,0.08)';
-        setTimeout(() => {
-            actionBtn.innerHTML = '<i class="fas fa-bookmark"></i> Save';
-            actionBtn.style.borderColor = '';
-            actionBtn.style.color = '';
-            actionBtn.style.background = '';
-        }, 2000);
+    } else {
+        actionBtn.innerHTML = '<i class="fas fa-book"></i> Mark as Read';
+        actionBtn.style.borderColor = '';
+        actionBtn.style.color = '';
+        actionBtn.style.background = '';
     }
-});
+}
 
 // ── Open detail panel ──────────────────────────────────────────
 function openDetail(book) {
@@ -126,13 +146,8 @@ function openDetail(book) {
     document.getElementById('detailStars').innerHTML = sh;
     document.getElementById('detailRatingNum').textContent = book.rating.toFixed(1);
 
-    // Bookmark state
-    actionBtn.innerHTML = bookmarked.has(book.title)
-        ? '<i class="fas fa-check"></i> Saved'
-        : '<i class="fas fa-bookmark"></i> Save';
-    actionBtn.style.borderColor = '';
-    actionBtn.style.color = '';
-    actionBtn.style.background = '';
+    // Read-status button
+    setActionButton(state.readBooks.has(book.title));
 
     // File handling: PDF → in-app reader, EPUB → download, none → disabled
     if (book.file) {
@@ -146,6 +161,7 @@ function openDetail(book) {
             readBtn.innerHTML = '<i class="fas fa-download"></i> Download EPUB';
             readBtn.onclick = (e) => {
                 e.preventDefault();
+                autoMarkRead(book);
                 const link = document.createElement('a');
                 link.href = book.file;
                 link.download = book.title.replace(/\s+/g, '_') + '.epub';
@@ -159,6 +175,7 @@ function openDetail(book) {
             readBtn.innerHTML = '<i class="fas fa-book-open"></i> Read PDF';
             readBtn.onclick = (e) => {
                 e.preventDefault();
+                autoMarkRead(book);
                 readerTitle.textContent = book.title;
                 readerIframe.src = book.file;
                 readerOverlay.classList.add('active');
@@ -176,20 +193,59 @@ function openDetail(book) {
     bookDetail.classList.add('active');
 }
 
-// ── Hover state update (called each frame from animationLoop) ──
+/** Silently marks a book as read when the user opens/downloads it */
+async function autoMarkRead(book) {
+    if (state.readBooks.has(book.title)) return;
+    state.readBooks.add(book.title);
+    await db.markAsRead({
+        title: book.title, author: book.author,
+        year: book.year, genre: book.genre, format: book.format
+    });
+    setActionButton(true);
+}
+
+// ── Focus / unfocus helpers ────────────────────────────────────
+
+function focusOnGroup(group) {
+    const bookPos = group.userData.basePos.clone();
+
+    // Place camera 3.5 units in front of the book, toward the current camera
+    const dirToCamera = camera.position.clone().sub(bookPos).normalize();
+    const focusCamPos = bookPos.clone().add(dirToCamera.multiplyScalar(3.5));
+
+    state.focusGroup     = group;
+    state.focusCamPos    = focusCamPos;
+    state.focusBookPos   = bookPos;
+    state.originalCamPos = camera.position.clone();
+    state.originalTarget = controls.target.clone();
+    state.focusLerp      = 0;
+    state.isFocusing     = true;
+    state.isUnfocusing   = false;
+
+    // Disable orbit while focused
+    controls.enabled    = false;
+    controls.autoRotate = false;
+}
+
+function startUnfocus() {
+    if (state.focusLerp > 0.01) {
+        state.isFocusing   = false;
+        state.isUnfocusing = true;
+    }
+}
+
+// ── Hover state (called each frame from animationLoop) ─────────
 export function updateHoverState(intersects) {
     if (intersects.length > 0) {
         const hit = intersects[0].object.parent;
 
         if (state.hoveredGroup !== hit) {
-            // Un-hover previous
             if (state.hoveredGroup) {
                 state.hoveredGroup.userData.targetScale = 1;
                 state.hoveredGroup.userData.baseBackGlowOpacity = 0.6;
                 state.hoveredGroup.userData.cover.material.emissive =
                     new THREE.Color(0x000000);
             }
-            // Hover new
             state.hoveredGroup = hit;
             state.hoveredGroup.userData.targetScale = 1.22;
             state.hoveredGroup.userData.baseBackGlowOpacity = 1.0;
@@ -261,10 +317,8 @@ addBookForm.addEventListener('submit', async (e) => {
     const bookFile  = bookInput.files[0];
     const format = bookFile ? bookFile.name.split('.').pop().toUpperCase() : "NONE";
 
-    // Persist to IndexedDB
     await db.saveBook({ title, author, year, genre, format }, coverFile, bookFile);
 
-    // Create scene-ready object
     const newBook = {
         title:  title  || "Untitled Book",
         author: author || "Unknown Author",

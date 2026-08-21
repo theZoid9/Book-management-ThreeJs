@@ -1,7 +1,7 @@
 /* ================================================================
    ANIMATION LOOP
-   Per-frame: book float, floater animation, raycasting,
-   connection lines, light motion, render.
+   Per-frame: focus transition, book float, floater animation,
+   raycasting, connection lines, light motion, render.
    ================================================================ */
 
 import * as THREE from 'three';
@@ -17,6 +17,11 @@ import { updateHoverState } from './interactions.js';
 setTimeout(hideLoader, 6000);
 
 const clock = new THREE.Clock();
+
+/** Smooth-step easing for the focus transition */
+function smoothstep(t) {
+    return t * t * (3 - 2 * t);
+}
 
 // ── Connection-line update ─────────────────────────────────────
 function updateLines() {
@@ -47,10 +52,42 @@ function updateLines() {
     lineGeo.setDrawRange(0, idx * 2);
 }
 
+// ── Focus / unfocus camera transition ──────────────────────────
+function updateFocus() {
+    if (state.isFocusing || state.isUnfocusing) {
+        const target = state.isFocusing ? 1 : 0;
+        state.focusLerp += (target - state.focusLerp) * 0.08;
+
+        // Snap when close enough
+        if (state.isFocusing && state.focusLerp > 0.995) {
+            state.focusLerp = 1;
+            state.isFocusing = false;
+        }
+        if (state.isUnfocusing && state.focusLerp < 0.005) {
+            state.focusLerp = 0;
+            state.isUnfocusing = false;
+            controls.enabled = true;
+            controls.autoRotate = true;
+            state.focusGroup = null;
+        }
+    }
+
+    if (state.focusLerp > 0 && state.focusCamPos) {
+        const t = smoothstep(state.focusLerp);
+        camera.position.lerpVectors(state.originalCamPos, state.focusCamPos, t);
+        controls.target.lerpVectors(state.originalTarget, state.focusBookPos, t);
+        camera.lookAt(controls.target);
+    }
+}
+
 // ── Main loop ──────────────────────────────────────────────────
 export function animate() {
     requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
+
+    // Camera focus transition (runs before book animation so
+    // the hovered highlight still works during the zoom)
+    updateFocus();
 
     // Animate each book group
     state.sphereGroups.forEach((group) => {
@@ -72,7 +109,7 @@ export function animate() {
 
         group.scale.setScalar(Math.max(0.001, d.currentScale));
 
-        // Billboarding: cover & glow always face the camera
+        // Billboarding
         d.cover.quaternion.copy(camera.quaternion);
         d.backGlow.quaternion.copy(camera.quaternion);
 
@@ -102,7 +139,7 @@ export function animate() {
         });
     });
 
-    // Raycasting → hover (delegates DOM updates to interactions module)
+    // Raycasting → hover (delegates DOM updates to interactions)
     state.raycaster.setFromCamera(state.mouse, camera);
     updateHoverState(state.raycaster.intersectObjects(state.rayTargets));
 
