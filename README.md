@@ -57,3 +57,10 @@ npm run dev
 
 
 # Development Workflow
+
+┌─────────────┐     edit files      ┌──────────────────┐
+│  Your code  │ ──────────────────→  │  Vite dev server │
+│  src/*.js   │                      │  localhost:5173   │
+│  public/*   │  ← auto-refresh ──  │  (HMR active)    │
+│  index.html │                      └──────────────────┘
+└─────────────┘
