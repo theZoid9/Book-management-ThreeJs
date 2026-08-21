@@ -15,7 +15,7 @@ A 3D interactive book library built with Three.js, bundled with Vite, deployed o
 
 ## First-Time Setup
 
-```bash
+
 # 1. Clone or download the project
 cd floating-library
 
