@@ -1,7 +1,8 @@
 /* ================================================================
    UI INTERACTIONS
    Raycasting · tooltip · detail panel · in-app PDF reader ·
-   "Mark as Read" toggle · "Add Book" modal · focus-on-click
+   "Mark as Read" toggle · Read Books list panel · "Add Book" modal ·
+   focus-on-click
    ================================================================ */
 
 import * as THREE from 'three';
@@ -11,7 +12,7 @@ import { sceneBooks } from './models.js';
 import { addBookToScene } from './bookBuilder.js';
 import { db } from './database.js';
 
-// ── DOM references ─────────────────────────────────────────────
+// ── DOM references: main UI ────────────────────────────────────
 const tooltip        = document.getElementById('tooltip');
 const tipTitle       = document.getElementById('tipTitle');
 const tipAuthor      = document.getElementById('tipAuthor');
@@ -24,6 +25,7 @@ const readerIframe   = document.getElementById('readerIframe');
 const readerTitle    = document.getElementById('readerTitle');
 const readerCloseBtn = document.getElementById('readerCloseBtn');
 
+// ── DOM references: add-book modal ─────────────────────────────
 const fabBtn             = document.getElementById('fabBtn');
 const addModal           = document.getElementById('addModal');
 const addCloseBtn        = document.getElementById('addCloseBtn');
@@ -34,7 +36,126 @@ const coverInputText     = document.getElementById('coverInputText');
 const bookInputText      = document.getElementById('bookInputText');
 const coverPreviewUpload = document.getElementById('coverPreviewUpload');
 
-// ── Mouse tracking ─────────────────────────────────────────────
+// ── DOM references: read-list panel ────────────────────────────
+const readListBtn     = document.getElementById('readListBtn');
+const readListBadge   = document.getElementById('readListBadge');
+const readListOverlay = document.getElementById('readListOverlay');
+const readListPanel   = document.getElementById('readListPanel');
+const readListClose   = document.getElementById('readListClose');
+const readListContent = document.getElementById('readListContent');
+
+
+/* ==============================================================
+   1. BADGE — keeps the counter on the button in sync
+   ============================================================== */
+
+export function updateReadBadge() {
+    const count = state.readBooks.size;
+    readListBadge.textContent = count;
+    if (count > 0) {
+        readListBadge.classList.add('visible');
+    } else {
+        readListBadge.classList.remove('visible');
+    }
+}
+
+
+/* ==============================================================
+   2. READ LIST PANEL — open / close / render / remove
+   ============================================================== */
+
+readListBtn.addEventListener('click', openReadList);
+readListClose.addEventListener('click', closeReadList);
+readListOverlay.addEventListener('click', (e) => {
+    if (e.target === readListOverlay) closeReadList();
+});
+
+function openReadList() {
+    renderReadList();
+    readListOverlay.classList.add('active');
+}
+
+function closeReadList() {
+    readListOverlay.classList.remove('active');
+}
+
+async function renderReadList() {
+    // Always pull fresh data from IndexedDB so the list is accurate
+    const entries = await db.getReadBooks();
+
+    if (entries.length === 0) {
+        readListContent.innerHTML = `
+            <div class="read-list-empty">
+                <i class="fas fa-book"></i>
+                No books read yet.<br>
+                Mark a book as read from its detail panel.
+            </div>`;
+        return;
+    }
+
+    readListContent.innerHTML = entries.map(entry => `
+        <div class="read-list-item" data-title="${escapeAttr(entry.title)}">
+            <div class="read-list-item-accent"></div>
+            <div class="read-list-item-info">
+                <div class="read-list-item-title">${escapeHTML(entry.title)}</div>
+                <div class="read-list-item-meta">
+                    ${escapeHTML(entry.author || 'Unknown')} &middot; ${entry.year || '—'} &middot; ${entry.genre || '—'}
+                </div>
+            </div>
+            <button class="read-list-item-remove" data-title="${escapeAttr(entry.title)}" title="Remove from read list">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+
+    // Attach remove handlers
+    readListContent.querySelectorAll('.read-list-item-remove').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const title = btn.dataset.title;
+            await removeFromReadList(title);
+        });
+    });
+}
+
+async function removeFromReadList(title) {
+    // 1. Update in-memory state
+    state.readBooks.delete(title);
+
+    // 2. Remove from IndexedDB
+    await db.removeRead(title);
+
+    // 3. Update badge
+    updateReadBadge();
+
+    // 4. Re-render the list (smooth: item fades out)
+    const item = readListContent.querySelector(`.read-list-item[data-title="${CSS.escape(title)}"]`);
+    if (item) {
+        item.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        item.style.opacity = '0';
+        item.style.transform = 'translateX(20px)';
+        setTimeout(() => renderReadList(), 260);
+    } else {
+        renderReadList();
+    }
+}
+
+/** Minimal HTML-escape for safe insertion */
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+/** Escape for use inside double-quoted attribute values */
+function escapeAttr(str) {
+    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+
+/* ==============================================================
+   3. MOUSE & TOUCH TRACKING
+   ============================================================== */
+
 window.addEventListener('mousemove', (e) => {
     state.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     state.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -42,7 +163,6 @@ window.addEventListener('mousemove', (e) => {
     tooltip.style.top  = (e.clientY - 12) + 'px';
 });
 
-// ── Touch support (tap = click) ────────────────────────────────
 let touchStart = { x: 0, y: 0 };
 window.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) {
@@ -67,7 +187,11 @@ window.addEventListener('touchend', (e) => {
     }
 }, { passive: true });
 
-// ── Click → focus + open detail ────────────────────────────────
+
+/* ==============================================================
+   4. CLICK → FOCUS + OPEN DETAIL
+   ============================================================== */
+
 window.addEventListener('click', () => {
     if (state.hoveredGroup && !bookDetail.classList.contains('active')) {
         focusOnGroup(state.hoveredGroup);
@@ -75,22 +199,28 @@ window.addEventListener('click', () => {
     }
 });
 
-// ── Close detail → unfocus ─────────────────────────────────────
+
+/* ==============================================================
+   5. CLOSE PANELS & UNFOCUS
+   ============================================================== */
+
 closeBtn.addEventListener('click', () => {
     bookDetail.classList.remove('active');
     startUnfocus();
 });
 
-// ── Close reader overlay (detail stays open) ───────────────────
 readerCloseBtn.addEventListener('click', () => {
     readerIframe.src = '';
     readerOverlay.classList.remove('active');
 });
 
-// ── "Mark as Read" toggle ──────────────────────────────────────
+
+/* ==============================================================
+   6. "MARK AS READ" TOGGLE (detail panel action button)
+   ============================================================== */
+
 actionBtn.addEventListener('click', () => {
     const title = document.getElementById('detailTitle').textContent;
-    // Find the full book object from sceneBooks
     const book = sceneBooks.find(b => b.title === title);
     if (!book) return;
     toggleReadStatus(book);
@@ -98,12 +228,10 @@ actionBtn.addEventListener('click', () => {
 
 async function toggleReadStatus(book) {
     if (state.readBooks.has(book.title)) {
-        // Un-mark
         state.readBooks.delete(book.title);
         await db.removeRead(book.title);
         setActionButton(false);
     } else {
-        // Mark as read
         state.readBooks.add(book.title);
         await db.markAsRead({
             title: book.title, author: book.author,
@@ -111,6 +239,7 @@ async function toggleReadStatus(book) {
         });
         setActionButton(true);
     }
+    updateReadBadge();
 }
 
 function setActionButton(isRead) {
@@ -127,7 +256,11 @@ function setActionButton(isRead) {
     }
 }
 
-// ── Open detail panel ──────────────────────────────────────────
+
+/* ==============================================================
+   7. OPEN DETAIL PANEL
+   ============================================================== */
+
 function openDetail(book) {
     document.getElementById('detailCover').src    = book.cover;
     document.getElementById('detailTitle').textContent  = book.title;
@@ -149,7 +282,7 @@ function openDetail(book) {
     // Read-status button
     setActionButton(state.readBooks.has(book.title));
 
-    // File handling: PDF → in-app reader, EPUB → download, none → disabled
+    // File handling
     if (book.file) {
         const isEpub = book.file.toLowerCase().endsWith('.epub');
         readBtn.classList.remove('no-pdf');
@@ -202,14 +335,16 @@ async function autoMarkRead(book) {
         year: book.year, genre: book.genre, format: book.format
     });
     setActionButton(true);
+    updateReadBadge();
 }
 
-// ── Focus / unfocus helpers ────────────────────────────────────
+
+/* ==============================================================
+   8. FOCUS / UNFOCUS HELPERS
+   ============================================================== */
 
 function focusOnGroup(group) {
     const bookPos = group.userData.basePos.clone();
-
-    // Place camera 3.5 units in front of the book, toward the current camera
     const dirToCamera = camera.position.clone().sub(bookPos).normalize();
     const focusCamPos = bookPos.clone().add(dirToCamera.multiplyScalar(3.5));
 
@@ -222,7 +357,6 @@ function focusOnGroup(group) {
     state.isFocusing     = true;
     state.isUnfocusing   = false;
 
-    // Disable orbit while focused
     controls.enabled    = false;
     controls.autoRotate = false;
 }
@@ -234,7 +368,11 @@ function startUnfocus() {
     }
 }
 
-// ── Hover state (called each frame from animationLoop) ─────────
+
+/* ==============================================================
+   9. HOVER STATE (called each frame from animationLoop)
+   ============================================================== */
+
 export function updateHoverState(intersects) {
     if (intersects.length > 0) {
         const hit = intersects[0].object.parent;
@@ -274,7 +412,11 @@ export function updateHoverState(intersects) {
     }
 }
 
-// ── Add Book Modal ─────────────────────────────────────────────
+
+/* ==============================================================
+   10. ADD BOOK MODAL
+   ============================================================== */
+
 fabBtn.addEventListener('click', () => addModal.classList.add('active'));
 addCloseBtn.addEventListener('click', () => resetAddForm());
 addModal.addEventListener('click', (e) => {
