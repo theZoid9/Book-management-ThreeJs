@@ -129,9 +129,11 @@ git push
 
 # What happens on Render's servers
 
+```
 npm install          ← installs three + vite
 npm run build        ← vite bundles src/ into dist/
 serve dist/          ← Render hosts the dist/ folder
+```
 
 Your public/covers/ and public/books/ are copied into dist/ during build, so book files are served at the correct paths.
 
