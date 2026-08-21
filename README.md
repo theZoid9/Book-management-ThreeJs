@@ -57,6 +57,7 @@ npm run dev
 
 
 # Development Workflow
+```
 
 ┌─────────────┐     edit files      ┌──────────────────┐
 │  Your code  │ ──────────────────→  │  Vite dev server │
@@ -64,6 +65,7 @@ npm run dev
 │  public/*   │  ← auto-refresh ──  │  (HMR active)    │
 │  index.html │                      └──────────────────┘
 └─────────────┘
+```
 
 1. Run npm run dev
 2. Edit any file — the page updates instantly (Hot Module Replacement)
@@ -83,7 +85,7 @@ Always test with preview before deploying — it exactly matches what Render wil
 npm run build
 
 Output goes to dist/
-
+```
 dist/
 ├── index.html                  minified HTML
 ├── assets/
@@ -93,7 +95,7 @@ dist/
 │   └── *.png
 └── books/                       copied from public/
     └── *.pdf, *.epub
-
+```
 
 Never edit files in dist/ directly. They are regenerated on every build.
 
