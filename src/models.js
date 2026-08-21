@@ -42,9 +42,9 @@ export function initializeLibrary() {
 
     books.push(
         new DigitalBook("9780134685991", "PARALLEL WORLDS", "Michio Kaku", 2012, 2, "fiction", "24 MB", "PDF", "public/covers/pworlds.png", "public/books/pworlds.pdf"),
-        new DigitalBook("978013", "THE DON", "Ronald Perry", 2012, 2, "non-fiction", "84 MB", "PDF", "covers/don.png", "public/books/TheDon(Roland Perry).pdf"),
-        new Book("9781491950296", "BEING LOGICAL", "D.Q McInery", 2020, 10, "non-fiction", "covers/logi.png", "public/books/being.pdf"),
-        new Book("91950296", "UNTIL THE END OF TIME", "Brian Green", 2017, 6, "fiction", "covers/green.png", "public/books/green.epub"),
+        new DigitalBook("978013", "THE DON", "Ronald Perry", 2012, 2, "non-fiction", "84 MB", "PDF", "public/covers/don.png", "public/books/TheDon(Roland Perry).pdf"),
+        new Book("9781491950296", "BEING LOGICAL", "D.Q McInery", 2020, 10, "non-fiction", "public/covers/logi.png", "public/books/being.pdf"),
+        new Book("91950296", "UNTIL THE END OF TIME", "Brian Green", 2017, 6, "fiction", "public/covers/green.png", "public/books/green.epub"),
         new Book("919", "ASTROPHYSICS FOR PEOPLE IN A HURRY", "Neil deGrasse Tyson", 2010, 6, "fiction", "public/covers/astro.png", "public/books/astro.epub"),
         new Book("91009", "THE PSYCHOLOGY OF MONEY", "Morgan Housel", 2019, 3, "non-fiction", "public/covers/money.png", "public/books/money.epub"),
         new Book("889996", "THE ROAD TO REACT", "Robin Wieruch", 2018, 3, "non-fiction", "public/covers/react.png", "public/books/react.pdf")
